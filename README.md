@@ -42,8 +42,8 @@ python --version
 
 ### Step 1 — Extract the project
 ```bash
-unzip packet_analyzer_python_fixed.zip
-cd fixed_proj
+unzip Deep Packet Inspection (DPI) Engine
+cd DPI
 ```
 
 ### Step 2 — Generate test traffic
