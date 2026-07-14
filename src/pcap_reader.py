@@ -1,23 +1,15 @@
-"""
-pcap_reader.py - Read and write PCAP files.
-Mirrors pcap_reader.h / pcap_reader.cpp from the original C++ project.
-No external libraries — pure stdlib.
-"""
-
 from __future__ import annotations
 from typing import Iterator, Optional
 import struct
 
 from .types import PcapGlobalHeader, PcapPacketHeader, RawPacket
 
-PCAP_MAGIC_LE = 0xA1B2C3D4   # little-endian timestamps (µs)
-PCAP_MAGIC_BE = 0xD4C3B2A1   # big-endian timestamps (µs)
-PCAP_MAGIC_NS_LE = 0xA1B23C4D  # nanosecond resolution
+PCAP_MAGIC_LE = 0xA1B2C3D4
+PCAP_MAGIC_BE = 0xD4C3B2A1
+PCAP_MAGIC_NS_LE = 0xA1B23C4D
 
 
 class PcapReader:
-    """Iterate over packets in a .pcap file."""
-
     def __init__(self, path: str) -> None:
         self.path = path
         self._fh = None
@@ -30,7 +22,6 @@ class PcapReader:
         if len(hdr_bytes) < PcapGlobalHeader.SIZE:
             raise ValueError(f"File too small to be a PCAP: {self.path}")
 
-        # Detect byte order
         magic = struct.unpack_from("<I", hdr_bytes)[0]
         if magic in (PCAP_MAGIC_LE, PCAP_MAGIC_NS_LE):
             self._byte_swap = False
@@ -56,7 +47,6 @@ class PcapReader:
             self._fh = None
 
     def packets(self) -> Iterator[RawPacket]:
-        """Yield RawPacket objects one by one."""
         fmt_hdr = "<IIII" if not self._byte_swap else ">IIII"
         while True:
             hdr_bytes = self._fh.read(PcapPacketHeader.SIZE)
@@ -73,8 +63,6 @@ class PcapReader:
 
 
 class PcapWriter:
-    """Write packets to a .pcap file."""
-
     def __init__(self, path: str,
                  snaplen: int = 65535,
                  network: int = 1) -> None:
