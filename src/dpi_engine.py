@@ -1,8 +1,3 @@
-"""
-dpi_engine.py - Single-threaded DPI engine.
-Mirrors main_working.cpp from the original C++ project.
-"""
-
 from __future__ import annotations
 from typing import Dict, Tuple
 from collections import defaultdict
@@ -18,11 +13,6 @@ from .rule_manager import RuleManager
 
 
 class DPIEngine:
-    """
-    Read an input PCAP, classify flows using Deep Packet Inspection,
-    apply blocking rules, and write allowed packets to an output PCAP.
-    """
-
     def __init__(self, rules: RuleManager) -> None:
         self.rules = rules
         self._flows: Dict[FiveTuple, Flow] = {}
@@ -35,16 +25,13 @@ class DPIEngine:
         self._total_bytes  = 0
 
     def process(self, input_path: str, output_path: str) -> None:
-        """Main entry point: read input_path, write filtered output_path."""
         with PcapReader(input_path) as reader:
             with PcapWriter(output_path) as writer:
-                print("[DPI] Processing packets...")
+                print("Processing packets...")
                 for raw in reader.packets():
                     self._process_packet(raw, writer)
 
         self._print_report(output_path)
-
-    # ── Internal ─────────────────────────────────────────────────────────────
 
     def _process_packet(self, raw, writer: PcapWriter) -> None:
         self._total_packets += 1
@@ -72,7 +59,6 @@ class DPIEngine:
             protocol=parsed.protocol,
         )
 
-        # Get or create flow
         if key not in self._flows:
             self._flows[key] = Flow(tuple=key)
         flow = self._flows[key]
@@ -81,7 +67,6 @@ class DPIEngine:
 
         payload = parsed.payload_data
 
-        # ── TLS/HTTPS SNI extraction (port 443) ──────────────────────────────
         if (parsed.has_tcp and parsed.dest_port == 443 and
                 not flow.sni and len(payload) > 5):
             sni = SNIExtractor.extract(payload)
@@ -89,7 +74,6 @@ class DPIEngine:
                 flow.sni      = sni
                 flow.app_type = sni_to_app_type(sni)
 
-        # ── HTTP Host extraction (port 80) ────────────────────────────────────
         if (parsed.has_tcp and parsed.dest_port == 80 and
                 not flow.sni and len(payload) > 4):
             host = HTTPHostExtractor.extract(payload)
@@ -97,19 +81,16 @@ class DPIEngine:
                 flow.sni      = host
                 flow.app_type = sni_to_app_type(host)
 
-        # ── DNS classification (port 53) ──────────────────────────────────────
         if (flow.app_type == AppType.UNKNOWN and
                 (parsed.dest_port == 53 or parsed.src_port == 53)):
             flow.app_type = AppType.DNS
 
-        # ── Port-based fallback ───────────────────────────────────────────────
         if flow.app_type == AppType.UNKNOWN:
             if parsed.dest_port == 443:
                 flow.app_type = AppType.HTTPS
             elif parsed.dest_port == 80:
                 flow.app_type = AppType.HTTP
 
-        # ── Blocking rules ────────────────────────────────────────────────────
         if not flow.blocked:
             if self.rules.is_blocked(src_ip_int, flow.app_type, flow.sni):
                 flow.blocked = True
@@ -119,36 +100,24 @@ class DPIEngine:
 
         self._app_stats[flow.app_type] += 1
 
-        # ── Forward or drop ───────────────────────────────────────────────────
         if flow.blocked:
             self._dropped += 1
         else:
             self._forwarded += 1
             writer.write_packet(raw)
 
-    # ── Reporting ─────────────────────────────────────────────────────────────
-
     def _print_report(self, output_path: str) -> None:
-        W = 66
-
-        def row(label: str, value) -> str:
-            return f"║ {label:<30}{str(value):>12}{'':>22}║"
 
         print()
-        print("╔" + "═" * W + "╗")
-        print("║" + "  PROCESSING REPORT  ".center(W) + "║")
-        print("╠" + "═" * W + "╣")
-        print(f"║  {'Total Packets:':<28}{self._total_packets:>10}{'':>26}║")
-        print(f"║  {'Total Bytes:':<28}{self._total_bytes:>10}{'':>26}║")
-        print(f"║  {'TCP Packets:':<28}{self._tcp_packets:>10}{'':>26}║")
-        print(f"║  {'UDP Packets:':<28}{self._udp_packets:>10}{'':>26}║")
-        print(f"║  {'Active Flows:':<28}{len(self._flows):>10}{'':>26}║")
-        print("╠" + "═" * W + "╣")
-        print(f"║  {'Forwarded:':<28}{self._forwarded:>10}{'':>26}║")
-        print(f"║  {'Dropped:':<28}{self._dropped:>10}{'':>26}║")
-        print("╠" + "═" * W + "╣")
-        print("║" + "  APPLICATION BREAKDOWN  ".center(W) + "║")
-        print("╠" + "═" * W + "╣")
+        print("Processing report")
+        print(f"Total packets: {self._total_packets}")
+        print(f"Total bytes: {self._total_bytes}")
+        print(f"TCP packets: {self._tcp_packets}")
+        print(f"UDP packets: {self._udp_packets}")
+        print(f"Active flows: {len(self._flows)}")
+        print(f"Forwarded: {self._forwarded}")
+        print(f"Dropped: {self._dropped}")
+        print("Application breakdown")
 
         sorted_apps = sorted(self._app_stats.items(), key=lambda x: -x[1])
         for app, count in sorted_apps:
@@ -156,17 +125,15 @@ class DPIEngine:
             bar = "#" * int(pct / 5)
             blocked_tag = " (BLOCKED)" if app in self.rules._blocked_apps else ""
             line = f"  {app.value + blocked_tag:<22}{count:>6}  {pct:>5.1f}%  {bar}"
-            print(f"║{line:<{W}}║")
+            print(line)
 
-        print("╚" + "═" * W + "╝")
-
-        # Unique SNIs
-        print("\n[Detected Domains / SNIs]")
+        print()
+        print("Detected domains / SNIs")
         seen: Dict[str, AppType] = {}
         for flow in self._flows.values():
             if flow.sni:
                 seen[flow.sni] = flow.app_type
         for sni, app in sorted(seen.items()):
-            print(f"  - {sni} -> {app.value}")
+            print(f"{sni} -> {app.value}")
 
         print(f"\nOutput written to: {output_path}")
