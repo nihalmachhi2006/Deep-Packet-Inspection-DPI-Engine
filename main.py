@@ -1,24 +1,4 @@
 #!/usr/bin/env python3
-"""
-main.py - CLI entrypoint for the Python DPI Engine.
-
-Usage:
-    python main.py <input.pcap> <output.pcap> [options]
-
-Options:
-    --block-ip <ip>        Block traffic from source IP
-    --block-app <app>      Block application (YouTube, Facebook, TikTok, ...)
-    --block-domain <dom>   Block domain (substring match)
-    --mt                   Use multi-threaded engine (default: single-threaded)
-    --lbs <n>              Number of Load Balancer threads [default: 2]
-    --fps <n>              Number of Fast Path threads per LB [default: 2]
-
-Examples:
-    python main.py capture.pcap filtered.pcap --block-app YouTube
-    python main.py capture.pcap filtered.pcap --block-ip 192.168.1.50 --mt
-    python main.py capture.pcap filtered.pcap \\
-        --block-app TikTok --block-domain facebook --mt --lbs 4 --fps 4
-"""
 
 import sys
 import argparse
@@ -29,12 +9,7 @@ from src.dpi_engine_mt import MTDPIEngine
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        prog="dpi_engine",
-        description="Deep Packet Inspection Engine — Python port",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
+    p = argparse.ArgumentParser(prog="dpi_engine", description="Deep Packet Inspection Engine")
     p.add_argument("input",  help="Input PCAP file")
     p.add_argument("output", help="Output PCAP file (filtered)")
 
@@ -57,14 +32,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
 
-    # ── Banner ─────────────────────────────────────────────────────────────────
     mode = "Multi-threaded" if args.mt else "Single-threaded"
+    print(f"DPI Engine v2.0 ({mode})")
     print()
-    print("╔══════════════════════════════════════════════════════════════════╗")
-    print(f"║{'DPI Engine v2.0 (Python) — ' + mode:^66}║")
-    print("╚══════════════════════════════════════════════════════════════════╝\n")
 
-    # ── Rules ──────────────────────────────────────────────────────────────────
     rules = RuleManager()
     for ip in args.block_ip:
         rules.block_ip(ip)
@@ -75,7 +46,6 @@ def main() -> int:
     if rules.has_rules:
         print()
 
-    # ── Engine ─────────────────────────────────────────────────────────────────
     try:
         if args.mt:
             engine = MTDPIEngine(rules, num_lbs=args.lbs, fps_per_lb=args.fps)
