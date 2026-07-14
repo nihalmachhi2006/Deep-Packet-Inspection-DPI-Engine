@@ -1,25 +1,16 @@
-"""
-packet_parser.py - Parse raw Ethernet/IP/TCP/UDP packets.
-Mirrors packet_parser.h / packet_parser.cpp from the original C++ project.
-Pure stdlib — no external dependencies.
-"""
-
 from __future__ import annotations
 import struct
 
 from .types import ParsedPacket, RawPacket
 
-# EtherType constants
 ETHERTYPE_IPV4 = 0x0800
 ETHERTYPE_IPV6 = 0x86DD
 ETHERTYPE_ARP  = 0x0806
 
-# Protocol constants
 PROTO_ICMP = 1
 PROTO_TCP  = 6
 PROTO_UDP  = 17
 
-# TCP flag bits
 TCP_FIN = 0x01
 TCP_SYN = 0x02
 TCP_RST = 0x04
@@ -48,14 +39,8 @@ def tcp_flags_to_str(flags: int) -> str:
 
 
 class PacketParser:
-    """Parse a RawPacket into a ParsedPacket."""
-
     @staticmethod
     def parse(raw: RawPacket) -> ParsedPacket | None:
-        """
-        Returns a ParsedPacket on success, or None if the packet is
-        too short / unsupported.
-        """
         parsed = ParsedPacket(
             timestamp_sec=raw.header.ts_sec,
             timestamp_usec=raw.header.ts_usec,
@@ -63,7 +48,6 @@ class PacketParser:
         data = raw.data
         offset = 0
 
-        # ── Ethernet (14 bytes) ──────────────────────────────────────────────
         if len(data) < 14:
             return None
 
@@ -73,16 +57,14 @@ class PacketParser:
         offset = 14
 
         if parsed.ether_type != ETHERTYPE_IPV4:
-            # We only handle IPv4 for now (mirrors the C++ version)
             return parsed
 
-        # ── IPv4 ─────────────────────────────────────────────────────────────
         if len(data) < offset + 20:
             return None
 
         version_ihl = data[offset]
         parsed.ip_version = (version_ihl >> 4) & 0x0F
-        ihl = (version_ihl & 0x0F) * 4  # header length in bytes
+        ihl = (version_ihl & 0x0F) * 4
 
         if parsed.ip_version != 4 or ihl < 20:
             return None
@@ -96,10 +78,9 @@ class PacketParser:
         parsed.has_ip   = True
         offset += ihl
 
-        # ── TCP ───────────────────────────────────────────────────────────────
         if parsed.protocol == PROTO_TCP:
             if len(data) < offset + 20:
-                return parsed  # No TCP header — return partial
+                return parsed
 
             parsed.src_port  = struct.unpack_from("!H", data, offset)[0]
             parsed.dest_port = struct.unpack_from("!H", data, offset + 2)[0]
@@ -114,7 +95,6 @@ class PacketParser:
                 return parsed
             offset += tcp_hdr_len
 
-        # ── UDP ───────────────────────────────────────────────────────────────
         elif parsed.protocol == PROTO_UDP:
             if len(data) < offset + 8:
                 return parsed
@@ -124,7 +104,6 @@ class PacketParser:
             parsed.has_udp   = True
             offset += 8
 
-        # ── Payload ───────────────────────────────────────────────────────────
         parsed.payload_data   = data[offset:]
         parsed.payload_length = len(parsed.payload_data)
 
