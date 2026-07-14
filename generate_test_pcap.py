@@ -1,34 +1,23 @@
 #!/usr/bin/env python3
-"""
-generate_test_pcap.py - Create a synthetic test PCAP with various traffic types.
-Mirrors generate_test_pcap.py from the original C++ project.
-Pure stdlib — no external dependencies.
-"""
 
 import struct
 import random
 import sys
-import os
-
-# ── PCAP helpers ─────────────────────────────────────────────────────────────
 
 def pcap_global_header() -> bytes:
-    """24-byte PCAP global header."""
     return struct.pack("<IHHiIII",
-        0xA1B2C3D4,  # magic
-        2, 4,        # version
-        0,           # timezone
-        0,           # sigfigs
-        65535,       # snaplen
-        1,           # network (Ethernet)
+        0xA1B2C3D4,
+        2, 4,
+        0,
+        0,
+        65535,
+        1,
     )
 
 
 def pcap_packet_header(ts_sec: int, ts_usec: int, length: int) -> bytes:
     return struct.pack("<IIII", ts_sec, ts_usec, length, length)
 
-
-# ── Network layer builders ────────────────────────────────────────────────────
 
 def eth_header(src_mac: bytes, dst_mac: bytes, ethertype: int = 0x0800) -> bytes:
     return dst_mac + src_mac + struct.pack("!H", ethertype)
@@ -40,14 +29,14 @@ def ip_header(src_ip: str, dst_ip: str, proto: int, payload_len: int) -> bytes:
 
     total_len = 20 + payload_len
     hdr = struct.pack("!BBHHHBBH",
-        0x45,       # version=4, IHL=5
-        0,          # DSCP/ECN
+        0x45,
+        0,
         total_len,
-        random.randint(1, 65535),  # ID
-        0,          # flags/fragment
-        64,         # TTL
+        random.randint(1, 65535),
+        0,
+        64,
         proto,
-        0,          # checksum (0 = not computed)
+        0,
     ) + pton(src_ip) + pton(dst_ip)
     return hdr
 
@@ -55,41 +44,35 @@ def ip_header(src_ip: str, dst_ip: str, proto: int, payload_len: int) -> bytes:
 def tcp_header(sport: int, dport: int, flags: int = 0x02, seq: int = 0) -> bytes:
     return struct.pack("!HHIIBBHH",
         sport, dport,
-        seq,          # seq
-        0,            # ack
-        0x50,         # data offset (5 * 4 = 20 bytes), reserved
-        flags,        # SYN=0x02, ACK=0x10, PSH|ACK=0x18
-        65535,        # window
-        0,            # checksum
-    ) + struct.pack("!H", 0)  # urgent pointer
+        seq,
+        0,
+        0x50,
+        flags,
+        65535,
+        0,
+    ) + struct.pack("!H", 0)
 
 
 def udp_header(sport: int, dport: int, payload_len: int) -> bytes:
     return struct.pack("!HHHH", sport, dport, 8 + payload_len, 0)
 
-
-# ── TLS Client Hello builder ──────────────────────────────────────────────────
-
 def tls_client_hello(sni: str) -> bytes:
     sni_bytes = sni.encode()
     sni_len   = len(sni_bytes)
 
-    # SNI extension data
     sni_ext_data = (
-        struct.pack("!H", sni_len + 3) +  # SNI list length
-        b"\x00" +                           # host_name type
+        struct.pack("!H", sni_len + 3) +
+        b"\x00" +
         struct.pack("!H", sni_len) +
         sni_bytes
     )
     sni_extension = struct.pack("!HH", 0x0000, len(sni_ext_data)) + sni_ext_data
 
-    # Supported versions extension (TLS 1.3 hint)
     sv_ext = struct.pack("!HHHB", 0x002B, 3, 2, 0x03) + b"\x04"
 
     extensions = sni_extension + sv_ext
     extensions_block = struct.pack("!H", len(extensions)) + extensions
 
-    # Client Hello body
     body = (
         b"\x03\x03"
         + bytes(random.getrandbits(8) for _ in range(32))
@@ -99,14 +82,9 @@ def tls_client_hello(sni: str) -> bytes:
         + extensions_block
     )
 
-    # Handshake header
     handshake = b"\x01" + struct.pack("!I", len(body))[1:] + body
 
-    # TLS record
     return b"\x16\x03\x01" + struct.pack("!H", len(handshake)) + handshake
-
-
-# ── DNS query builder ─────────────────────────────────────────────────────────
 
 def dns_query(domain: str) -> bytes:
     qname = b""
@@ -116,13 +94,10 @@ def dns_query(domain: str) -> bytes:
     qname += b"\x00"
 
     return struct.pack("!HHHHHH",
-        random.randint(1, 65535),  # transaction ID
-        0x0100,  # flags: standard query, recursion desired
-        1, 0, 0, 0,  # QDCOUNT=1, ANCOUNT=0, NSCOUNT=0, ARCOUNT=0
-    ) + qname + struct.pack("!HH", 1, 1)  # QTYPE=A, QCLASS=IN
-
-
-# ── HTTP request builder ──────────────────────────────────────────────────────
+        random.randint(1, 65535),
+        0x0100,
+        1, 0, 0, 0,
+    ) + qname + struct.pack("!HH", 1, 1)
 
 def http_request(host: str, path: str = "/") -> bytes:
     return (
@@ -133,9 +108,6 @@ def http_request(host: str, path: str = "/") -> bytes:
         f"\r\n"
     ).encode()
 
-
-# ── Packet assembler ──────────────────────────────────────────────────────────
-
 _SRC_MAC  = bytes.fromhex("001122334455")
 _DST_MAC  = bytes.fromhex("aabbccddeeff")
 _GW_MAC   = bytes.fromhex("aabbccddeeff")
@@ -143,7 +115,7 @@ _GW_MAC   = bytes.fromhex("aabbccddeeff")
 
 def make_tcp_tls_packet(src_ip: str, dst_ip: str, sport: int, dport: int,
                          payload: bytes, ts: int) -> bytes:
-    tcp = tcp_header(sport, dport, flags=0x18)  # PSH+ACK
+    tcp = tcp_header(sport, dport, flags=0x18)
     ip  = ip_header(src_ip, dst_ip, 6, len(tcp) + len(payload))
     eth = eth_header(_SRC_MAC, _DST_MAC)
     frame = eth + ip + tcp + payload
@@ -158,11 +130,7 @@ def make_udp_packet(src_ip: str, dst_ip: str, sport: int, dport: int,
     frame = eth + ip + udp + payload
     return pcap_packet_header(ts, 0, len(frame)) + frame
 
-
-# ── Traffic scenarios ─────────────────────────────────────────────────────────
-
 SCENARIOS = [
-    # (src_ip, dst_ip, proto, sni_or_host, num_packets, description)
     ("192.168.1.100", "142.250.185.206", "tls",  "www.youtube.com",   8, "YouTube HTTPS"),
     ("192.168.1.101", "157.240.229.35",  "tls",  "www.facebook.com",  5, "Facebook HTTPS"),
     ("192.168.1.102", "8.8.8.8",         "dns",  "google.com",        4, "DNS lookup"),
@@ -218,7 +186,7 @@ def generate(output_path: str) -> None:
     with open(output_path, "wb") as f:
         f.write(data)
 
-    print(f"\n✓ Generated {total} packets → {output_path}")
+    print(f"Generated {total} packets -> {output_path}")
     print(f"  File size: {len(data):,} bytes")
 
 
