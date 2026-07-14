@@ -1,4 +1,3 @@
-"""DPI Engine — Python port of the C++ Packet Analyzer project."""
 from .types import AppType, FiveTuple, Flow, ip_to_int, int_to_ip, sni_to_app_type
 from .pcap_reader import PcapReader, PcapWriter
 from .packet_parser import PacketParser
