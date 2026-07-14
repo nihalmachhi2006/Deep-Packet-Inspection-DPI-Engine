@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-tests/test_dpi.py — Unit tests for the Python DPI Engine.
-Run with: python -m pytest tests/ -v
-       or: python tests/test_dpi.py
-"""
 
 import sys
 import os
@@ -11,17 +6,12 @@ import struct
 import unittest
 import tempfile
 
-# Make sure the package is importable when run from the project root
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from src.types import AppType, FiveTuple, ip_to_int, int_to_ip, sni_to_app_type
 from src.sni_extractor import SNIExtractor, HTTPHostExtractor, DNSExtractor
 from src.rule_manager import RuleManager
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Helpers — build minimal TLS Client Hello bytes
-# ──────────────────────────────────────────────────────────────────────────────
 
 def _tls_client_hello(sni: str) -> bytes:
     sni_bytes = sni.encode()
@@ -47,10 +37,6 @@ def _tls_client_hello(sni: str) -> bytes:
     return b"\x16\x03\x01" + struct.pack("!H", len(handshake)) + handshake
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Test cases
-# ──────────────────────────────────────────────────────────────────────────────
-
 class TestTypes(unittest.TestCase):
 
     def test_ip_roundtrip(self):
@@ -58,7 +44,6 @@ class TestTypes(unittest.TestCase):
         self.assertEqual(int_to_ip(ip_to_int(ip)), ip)
 
     def test_ip_to_int(self):
-        # 192 = first octet → shift 0; .168 → shift 8; .1 → shift 16; .1 → shift 24
         val = ip_to_int("1.0.0.0")
         self.assertEqual(val & 0xFF, 1)
 
@@ -134,7 +119,6 @@ class TestDNSExtractor(unittest.TestCase):
 
     def test_dns_response_ignored(self):
         payload = self._dns_query("example.com")
-        # Flip QR bit to mark as response
         flags_bytes = bytearray(payload)
         flags_bytes[2] |= 0x80
         self.assertIsNone(DNSExtractor.extract(bytes(flags_bytes)))
@@ -170,12 +154,9 @@ class TestRuleManager(unittest.TestCase):
 
 
 class TestIntegration(unittest.TestCase):
-    """End-to-end test using generated PCAP."""
-
     def test_single_threaded_pipeline(self):
         import subprocess
 
-        # Use abspath so this works on Windows regardless of how pytest is invoked
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         gen_script   = os.path.join(project_root, "generate_test_pcap.py")
 
@@ -183,7 +164,6 @@ class TestIntegration(unittest.TestCase):
             pcap_in  = os.path.join(tmpdir, "test.pcap")
             pcap_out = os.path.join(tmpdir, "out.pcap")
 
-            # Generate test PCAP
             result = subprocess.run(
                 [sys.executable, gen_script, pcap_in],
                 capture_output=True,
@@ -196,7 +176,6 @@ class TestIntegration(unittest.TestCase):
                     f"STDERR: {result.stderr}"
                 )
 
-            # Run DPI engine
             from src.rule_manager import RuleManager
             from src.dpi_engine import DPIEngine
             rules = RuleManager()
@@ -204,7 +183,6 @@ class TestIntegration(unittest.TestCase):
             engine = DPIEngine(rules)
             engine.process(pcap_in, pcap_out)
 
-            # Output file should exist and be smaller than input (YouTube dropped)
             self.assertTrue(os.path.exists(pcap_out))
             self.assertGreater(os.path.getsize(pcap_in), 0)
             self.assertGreater(os.path.getsize(pcap_out), 0)
